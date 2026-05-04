@@ -1,7 +1,7 @@
 import streamlit as st
 from database import Database
 from datetime import date
-from utils import format_rupiah
+from utils import format_rupiah, render_wallet_card
 
 st.set_page_config(
     page_title="Catatan Keuangan",
@@ -54,14 +54,12 @@ st.subheader("👛 Saldo per Wallet")
 df_wallet_saldo = st.session_state.db.get_saldo_semua_wallet()
 
 if df_wallet_saldo:
-    wallet_cols = st.columns(min(3, len(df_wallet_saldo)))
+    n_cols = min(3, len(df_wallet_saldo))
+    wallet_cols = st.columns(n_cols)
 
     for idx, wallet_row in enumerate(df_wallet_saldo):
-        with wallet_cols[idx % min(3, len(df_wallet_saldo))]:
-            st.metric(
-                f"{wallet_row['ikon_bawaan']} {wallet_row['nama']}",
-                format_rupiah(wallet_row['saldo_saat_ini'], mata_uang)
-            )
+        with wallet_cols[idx % n_cols]:
+            render_wallet_card(wallet_row, mata_uang)
 
 st.markdown("---")
 

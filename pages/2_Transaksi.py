@@ -28,10 +28,11 @@ with st.form("form_transaksi"):
     with col2:
         kategori_list = st.session_state.db.get_all_kategori(jenis=jenis)
         if kategori_list:
+            kat_map = {k['id']: k for k in kategori_list}
             kategori_id = st.selectbox(
                 "Kategori",
                 options=[k['id'] for k in kategori_list],
-                format_func=lambda kid: f"{next(k['ikon'] for k in kategori_list if k['id'] == kid)} {next(k['nama'] for k in kategori_list if k['id'] == kid)}"
+                format_func=lambda kid: f"{kat_map[kid]['ikon']} {kat_map[kid]['nama']}"
             )
         else:
             st.error(f"Tidak ada kategori untuk jenis '{jenis}'")
@@ -40,11 +41,15 @@ with st.form("form_transaksi"):
     col_wallet = st.columns(1)[0]
     with col_wallet:
         wallets = st.session_state.db.get_all_wallets()
-        wallet_id = st.selectbox(
-            "Wallet",
-            options=[w['id'] for w in wallets],
-            format_func=lambda wid: f"{next(w['ikon_bawaan'] for w in wallets if w['id']==wid)} {next(w['nama'] for w in wallets if w['id']==wid)}"
-        ) if wallets else None
+        if wallets:
+            wallet_map = {w['id']: w for w in wallets}
+            wallet_id = st.selectbox(
+                "Wallet",
+                options=[w['id'] for w in wallets],
+                format_func=lambda wid: f"{wallet_map[wid]['ikon_bawaan']} {wallet_map[wid]['nama']}"
+            )
+        else:
+            wallet_id = None
 
     nominal = st.number_input(
         "Nominal",

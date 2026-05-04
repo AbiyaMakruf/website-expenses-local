@@ -82,3 +82,23 @@ def format_tanggal(tanggal, format_str="DD/MM/YYYY"):
         return tanggal.strftime("%m/%d/%Y")
     else:
         return tanggal.strftime("%d/%m/%Y")
+
+
+def render_wallet_card(wallet_row, mata_uang):
+    """Render wallet balance card with image icon or emoji fallback."""
+    import streamlit as st
+    from pathlib import Path
+
+    ikon_path = wallet_row.get('ikon_path')
+    if ikon_path and Path(ikon_path).exists():
+        img_col, txt_col = st.columns([0.25, 0.75])
+        with img_col:
+            st.image(ikon_path, width=40)
+        with txt_col:
+            st.markdown(f"**{wallet_row['nama']}**")
+            st.markdown(f"**{format_rupiah(wallet_row['saldo_saat_ini'], mata_uang)}**")
+    else:
+        st.metric(
+            label=f"{wallet_row['ikon_bawaan']} {wallet_row['nama']}",
+            value=format_rupiah(wallet_row['saldo_saat_ini'], mata_uang)
+        )

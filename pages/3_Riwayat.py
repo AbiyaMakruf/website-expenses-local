@@ -36,10 +36,11 @@ with col3:
 
 with col4:
     kategori_list = st.session_state.db.get_all_kategori()
+    kategori_map = {k['id']: k for k in kategori_list}
     kategori_selected = st.multiselect(
         "Kategori",
         options=[k['id'] for k in kategori_list],
-        format_func=lambda kid: f"{next(k['ikon'] for k in kategori_list if k['id'] == kid)} {next(k['nama'] for k in kategori_list if k['id'] == kid)}"
+        format_func=lambda kid: f"{kategori_map[kid]['ikon']} {kategori_map[kid]['nama']}"
     )
 
 search_text = st.text_input("Cari catatan atau kategori", "")
@@ -106,19 +107,21 @@ if "edit_id" in st.session_state:
                 )
 
                 kategori_list_edit = st.session_state.db.get_all_kategori(jenis=jenis_edit)
+                kat_edit_map = {k['id']: k for k in kategori_list_edit}
                 kategori_id_edit = st.selectbox(
                     "Kategori",
                     options=[k['id'] for k in kategori_list_edit],
                     index=[k['id'] for k in kategori_list_edit].index(edit_row['kategori_id']),
-                    format_func=lambda kid: f"{next(k['ikon'] for k in kategori_list_edit if k['id'] == kid)} {next(k['nama'] for k in kategori_list_edit if k['id'] == kid)}"
+                    format_func=lambda kid: f"{kat_edit_map[kid]['ikon']} {kat_edit_map[kid]['nama']}"
                 )
 
                 wallets_edit = st.session_state.db.get_all_wallets()
+                wallet_edit_map = {w['id']: w for w in wallets_edit}
                 wallet_id_edit = st.selectbox(
                     "Wallet",
                     options=[w['id'] for w in wallets_edit],
                     index=[w['id'] for w in wallets_edit].index(edit_row['wallet_id']),
-                    format_func=lambda wid: f"{next(w['ikon_bawaan'] for w in wallets_edit if w['id']==wid)} {next(w['nama'] for w in wallets_edit if w['id']==wid)}"
+                    format_func=lambda wid: f"{wallet_edit_map[wid]['ikon_bawaan']} {wallet_edit_map[wid]['nama']}"
                 )
 
                 tanggal_edit = st.date_input("Tanggal", value=pd.to_datetime(edit_row['tanggal']).date())

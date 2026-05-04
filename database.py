@@ -53,6 +53,18 @@ class Database:
         except sqlite3.OperationalError:
             pass
 
+        # Migration: Add parent_id to kategori for sub-categories
+        try:
+            c.execute("ALTER TABLE kategori ADD COLUMN parent_id INTEGER REFERENCES kategori(id) DEFAULT NULL")
+        except sqlite3.OperationalError:
+            pass
+
+        # Migration: Add transfer_pair_id to transactions for transfer tracking
+        try:
+            c.execute("ALTER TABLE transactions ADD COLUMN transfer_pair_id INTEGER DEFAULT NULL")
+        except sqlite3.OperationalError:
+            pass
+
         # Create anggaran table
         c.execute("""
         CREATE TABLE IF NOT EXISTS anggaran (
@@ -87,24 +99,45 @@ class Database:
         );
         """)
 
+        # Create subscription table
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS subscription (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            nama          TEXT    NOT NULL,
+            nominal       REAL    NOT NULL CHECK(nominal > 0),
+            tanggal_bayar INTEGER NOT NULL CHECK(tanggal_bayar BETWEEN 1 AND 31),
+            catatan       TEXT    DEFAULT '',
+            ikon_path     TEXT    DEFAULT NULL,
+            aktif         INTEGER DEFAULT 1,
+            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
         # Seed default kategoris if not exist
         c.execute("SELECT COUNT(*) as count FROM kategori;")
         if c.fetchone()["count"] == 0:
-            defaults = [
-                ("Makanan & Minuman", "pengeluaran", "🍽️", "#FF6B6B", 1),
-                ("Transportasi", "pengeluaran", "🚗", "#4ECDC4", 1),
-                ("Belanja", "pengeluaran", "🛍️", "#FFE66D", 1),
-                ("Hiburan", "pengeluaran", "🎬", "#95E1D3", 1),
-                ("Kesehatan", "pengeluaran", "💊", "#F38181", 1),
-                ("Tagihan", "pengeluaran", "💡", "#AA96DA", 1),
-                ("Gaji", "pemasukan", "💰", "#00D2FC", 1),
-                ("Freelance", "pemasukan", "💻", "#8FD14F", 1),
-                ("Lainnya", "keduanya", "📦", "#636EFA", 1),
+            # Create 2 parent categories
+            c.execute("INSERT INTO kategori (nama, jenis, ikon, warna, is_default) VALUES ('Makanan', 'pengeluaran', '🍽️', '#FF6B6B', 1)")
+            makanan_id = c.lastrowid
+            c.execute("INSERT INTO kategori (nama, jenis, ikon, warna, is_default) VALUES ('Pemasukan', 'pemasukan', '💰', '#00D2FC', 1)")
+            pemasukan_id = c.lastrowid
+
+            # Create 4 subcategories (2 per parent)
+            sub_defaults = [
+                ("Makan Berat", "pengeluaran", "🍛", "#FF6B6B", 1, makanan_id),
+                ("Minuman",     "pengeluaran", "☕", "#F38181", 1, makanan_id),
+                ("Gaji",        "pemasukan",   "💼", "#00D2FC", 1, pemasukan_id),
+                ("Freelance",   "pemasukan",   "💻", "#8FD14F", 1, pemasukan_id),
             ]
             c.executemany(
-                "INSERT INTO kategori (nama, jenis, ikon, warna, is_default) VALUES (?, ?, ?, ?, ?)",
-                defaults
+                "INSERT INTO kategori (nama, jenis, ikon, warna, is_default, parent_id) VALUES (?, ?, ?, ?, ?, ?)",
+                sub_defaults
             )
+
+        # Seed Transfer Dana kategori if not exist
+        c.execute("SELECT id FROM kategori WHERE nama = 'Transfer Dana'")
+        if not c.fetchone():
+            c.execute("INSERT INTO kategori (nama, jenis, ikon, warna, is_default) VALUES ('Transfer Dana', 'keduanya', '↔️', '#636EFA', 1)")
 
         # Seed default settings if not exist
         c.execute("SELECT COUNT(*) as count FROM pengaturan;")
@@ -125,7 +158,11 @@ class Database:
         if c.fetchone()["count"] == 0:
             c.execute("""
                 INSERT INTO wallet (nama, jenis, ikon_bawaan, saldo_awal, warna)
-                VALUES ('Default', 'cash', '💵', 0, '#8FD14F')
+                VALUES ('Tunai', 'cash', '💵', 0, '#8FD14F')
+            """)
+            c.execute("""
+                INSERT INTO wallet (nama, jenis, ikon_bawaan, saldo_awal, warna)
+                VALUES ('Bank', 'bank', '🏦', 0, '#636EFA')
             """)
 
         # Migration: Add wallet_id to transactions
@@ -140,32 +177,46 @@ class Database:
 
     # ===== KATEGORI OPERATIONS =====
 
-    def get_all_kategori(self, jenis=None):
+    def get_all_kategori(self, jenis=None, parent_id=None, only_leaf=False):
+        """Get kategori with optional filtering.
+        parent_id='root' → WHERE parent_id IS NULL
+        parent_id=<int>  → WHERE parent_id = ?
+        only_leaf=True   → exclude rows that are parents
+        """
         conn = self._connect()
         c = conn.cursor()
 
-        if jenis:
-            c.execute("""
-                SELECT * FROM kategori
-                WHERE jenis IN (?, 'keduanya')
-                ORDER BY nama
-            """, (jenis,))
-        else:
-            c.execute("SELECT * FROM kategori ORDER BY nama")
+        query = "SELECT * FROM kategori WHERE 1=1"
+        params = []
 
+        if jenis:
+            query += " AND jenis IN (?, 'keduanya')"
+            params.append(jenis)
+
+        if parent_id == 'root':
+            query += " AND parent_id IS NULL"
+        elif parent_id is not None:
+            query += " AND parent_id = ?"
+            params.append(parent_id)
+
+        if only_leaf:
+            query += " AND id NOT IN (SELECT DISTINCT parent_id FROM kategori WHERE parent_id IS NOT NULL)"
+
+        query += " ORDER BY nama"
+        c.execute(query, params)
         rows = c.fetchall()
         conn.close()
         return [dict(row) for row in rows]
 
-    def add_kategori(self, nama, jenis, ikon="📦", warna="#636EFA"):
+    def add_kategori(self, nama, jenis, ikon="📦", warna="#636EFA", parent_id=None):
         conn = self._connect()
         c = conn.cursor()
 
         try:
             c.execute("""
-                INSERT INTO kategori (nama, jenis, ikon, warna)
-                VALUES (?, ?, ?, ?)
-            """, (nama, jenis, ikon, warna))
+                INSERT INTO kategori (nama, jenis, ikon, warna, parent_id)
+                VALUES (?, ?, ?, ?, ?)
+            """, (nama, jenis, ikon, warna, parent_id))
             conn.commit()
             new_id = c.lastrowid
             conn.close()
@@ -174,7 +225,7 @@ class Database:
             conn.close()
             raise ValueError(f"Kategori '{nama}' sudah ada") from e
 
-    def update_kategori(self, id, nama, jenis, ikon, warna):
+    def update_kategori(self, id, nama, jenis, ikon, warna, parent_id=None):
         conn = self._connect()
         c = conn.cursor()
 
@@ -187,9 +238,9 @@ class Database:
         try:
             c.execute("""
                 UPDATE kategori
-                SET nama = ?, jenis = ?, ikon = ?, warna = ?
+                SET nama = ?, jenis = ?, ikon = ?, warna = ?, parent_id = ?
                 WHERE id = ?
-            """, (nama, jenis, ikon, warna, id))
+            """, (nama, jenis, ikon, warna, parent_id, id))
             conn.commit()
             conn.close()
         except sqlite3.IntegrityError as e:
@@ -205,6 +256,12 @@ class Database:
         if row and row["is_default"]:
             conn.close()
             raise ValueError("Kategori default tidak bisa dihapus")
+
+        # Check if it has children (is a parent)
+        c.execute("SELECT COUNT(*) as count FROM kategori WHERE parent_id = ?", (id,))
+        if c.fetchone()["count"] > 0:
+            conn.close()
+            raise ValueError("Hapus subkategori terlebih dahulu sebelum menghapus kategori parent")
 
         c.execute("SELECT COUNT(*) as count FROM transactions WHERE kategori_id = ?", (id,))
         if c.fetchone()["count"] > 0:
@@ -282,12 +339,17 @@ class Database:
         conn = self._connect()
         c = conn.cursor()
 
-        c.execute("SELECT foto_path FROM transactions WHERE id = ?", (id,))
+        # Get transfer_pair_id if this is a transfer
+        c.execute("SELECT foto_path, transfer_pair_id FROM transactions WHERE id = ?", (id,))
         row = c.fetchone()
         if row and row["foto_path"]:
             foto_path = Path(row["foto_path"])
             if foto_path.exists():
                 foto_path.unlink()
+
+        # If transfer, delete paired transaction too
+        if row and row["transfer_pair_id"]:
+            c.execute("DELETE FROM transactions WHERE id = ?", (row["transfer_pair_id"],))
 
         c.execute("DELETE FROM transactions WHERE id = ?", (id,))
         conn.commit()
@@ -384,15 +446,34 @@ class Database:
     def get_saldo_total(self):
         conn = self._connect()
         c = conn.cursor()
-
-        c.execute("SELECT COALESCE(SUM(nominal), 0) as total FROM transactions WHERE jenis = 'pemasukan'")
-        total_pemasukan = c.fetchone()["total"]
-
-        c.execute("SELECT COALESCE(SUM(nominal), 0) as total FROM transactions WHERE jenis = 'pengeluaran'")
-        total_pengeluaran = c.fetchone()["total"]
-
+        c.execute("""
+            SELECT
+                COALESCE(SUM(CASE WHEN jenis='pemasukan' THEN nominal ELSE 0 END), 0) as total_pemasukan,
+                COALESCE(SUM(CASE WHEN jenis='pengeluaran' THEN nominal ELSE 0 END), 0) as total_pengeluaran
+            FROM transactions
+        """)
+        row = c.fetchone()
         conn.close()
-        return total_pemasukan - total_pengeluaran
+        return row["total_pemasukan"] - row["total_pengeluaran"]
+
+    def get_ringkasan_keseluruhan(self):
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute("""
+            SELECT
+                COALESCE(SUM(CASE WHEN jenis='pemasukan' THEN nominal ELSE 0 END), 0) as total_pemasukan,
+                COALESCE(SUM(CASE WHEN jenis='pengeluaran' THEN nominal ELSE 0 END), 0) as total_pengeluaran
+            FROM transactions
+        """)
+        row = c.fetchone()
+        conn.close()
+        total_pemasukan = row["total_pemasukan"]
+        total_pengeluaran = row["total_pengeluaran"]
+        return {
+            "total_pemasukan": total_pemasukan,
+            "total_pengeluaran": total_pengeluaran,
+            "saldo": total_pemasukan - total_pengeluaran,
+        }
 
     def get_pengeluaran_per_kategori(self, bulan, tahun):
         conn = self._connect()
@@ -694,6 +775,174 @@ class Database:
         if df.empty:
             return pd.DataFrame(columns=["kategori_id","kategori_nama","ikon","warna","total_pengeluaran","total_pemasukan"])
         return df
+
+    # ===== KATEGORI HIERARCHY =====
+
+    def get_kategori_tree(self, jenis=None):
+        """Return kategori as tree: parents with children list."""
+        all_kat = self.get_all_kategori(jenis=jenis)
+        parents = [k for k in all_kat if k.get('parent_id') is None]
+        tree = []
+        for parent in parents:
+            children = [k for k in all_kat if k.get('parent_id') == parent['id']]
+            tree.append({**parent, 'children': children})
+        return tree
+
+    # ===== TRANSFER OPERATIONS =====
+
+    def get_transfer_kategori_id(self):
+        """Get ID of the special 'Transfer Dana' kategori."""
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute("SELECT id FROM kategori WHERE nama = 'Transfer Dana'")
+        row = c.fetchone()
+        conn.close()
+        return row['id'] if row else None
+
+    def add_transfer(self, tanggal, dari_wallet_id, ke_wallet_id, nominal, catatan=""):
+        """Create paired transfer: pengeluaran on dari_wallet, pemasukan on ke_wallet."""
+        if dari_wallet_id == ke_wallet_id:
+            raise ValueError("Wallet asal dan tujuan tidak boleh sama")
+
+        transfer_kat_id = self.get_transfer_kategori_id()
+        conn = self._connect()
+        c = conn.cursor()
+
+        try:
+            # Insert pengeluaran on dari_wallet
+            c.execute("""
+                INSERT INTO transactions (tanggal, jenis, kategori_id, nominal, catatan, wallet_id)
+                VALUES (?, 'pengeluaran', ?, ?, ?, ?)
+            """, (tanggal, transfer_kat_id, nominal, f"Transfer ke {ke_wallet_id}: {catatan}", dari_wallet_id))
+            id_keluar = c.lastrowid
+
+            # Insert pemasukan on ke_wallet
+            c.execute("""
+                INSERT INTO transactions (tanggal, jenis, kategori_id, nominal, catatan, wallet_id)
+                VALUES (?, 'pemasukan', ?, ?, ?, ?)
+            """, (tanggal, transfer_kat_id, nominal, f"Transfer dari {dari_wallet_id}: {catatan}", ke_wallet_id))
+            id_masuk = c.lastrowid
+
+            # Link both transactions
+            c.execute("UPDATE transactions SET transfer_pair_id = ? WHERE id = ?", (id_masuk, id_keluar))
+            c.execute("UPDATE transactions SET transfer_pair_id = ? WHERE id = ?", (id_keluar, id_masuk))
+
+            conn.commit()
+            conn.close()
+            return (id_keluar, id_masuk)
+        except Exception as e:
+            conn.close()
+            raise e
+
+    def get_transfer_list(self, limit=10):
+        """Get list of transfers as tuples (pengeluaran_row, pemasukan_row)."""
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute("""
+            SELECT
+                t1.id as id_keluar,
+                t1.tanggal,
+                t1.nominal,
+                t1.catatan,
+                w1.nama as dari_wallet,
+                w2.nama as ke_wallet,
+                t2.id as id_masuk
+            FROM transactions t1
+            JOIN wallet w1 ON t1.wallet_id = w1.id
+            JOIN transactions t2 ON t1.transfer_pair_id = t2.id
+            JOIN wallet w2 ON t2.wallet_id = w2.id
+            WHERE t1.jenis = 'pengeluaran' AND t1.transfer_pair_id IS NOT NULL
+            ORDER BY t1.tanggal DESC
+            LIMIT ?
+        """, (limit,))
+        rows = c.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    # ===== SUBSCRIPTION =====
+
+    def get_subscription_icons_dir(self):
+        """Return/create data/subscription_icons/ directory."""
+        icons_dir = self.db_path.parent / "subscription_icons"
+        icons_dir.mkdir(parents=True, exist_ok=True)
+        return icons_dir
+
+    def get_all_subscriptions(self, aktif_only=True):
+        """Get all subscriptions, optionally filtered to active only."""
+        conn = self._connect()
+        c = conn.cursor()
+        if aktif_only:
+            c.execute("SELECT * FROM subscription WHERE aktif = 1 ORDER BY tanggal_bayar")
+        else:
+            c.execute("SELECT * FROM subscription ORDER BY tanggal_bayar")
+        rows = c.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_subscription(self, sub_id):
+        """Get a single subscription by ID."""
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute("SELECT * FROM subscription WHERE id = ?", (sub_id,))
+        row = c.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def add_subscription(self, nama, nominal, tanggal_bayar, catatan="", ikon_path=None, aktif=1):
+        """Add a new subscription."""
+        conn = self._connect()
+        c = conn.cursor()
+        try:
+            c.execute("""
+                INSERT INTO subscription (nama, nominal, tanggal_bayar, catatan, ikon_path, aktif)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (nama, nominal, tanggal_bayar, catatan, ikon_path, aktif))
+            conn.commit()
+            new_id = c.lastrowid
+            conn.close()
+            return new_id
+        except Exception as e:
+            conn.close()
+            raise e
+
+    def update_subscription(self, sub_id, nama, nominal, tanggal_bayar, catatan, ikon_path, aktif):
+        """Update an existing subscription."""
+        conn = self._connect()
+        c = conn.cursor()
+        try:
+            c.execute("""
+                UPDATE subscription
+                SET nama=?, nominal=?, tanggal_bayar=?, catatan=?, ikon_path=?, aktif=?
+                WHERE id=?
+            """, (nama, nominal, tanggal_bayar, catatan, ikon_path, aktif, sub_id))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            conn.close()
+            raise e
+
+    def delete_subscription(self, sub_id):
+        """Delete a subscription and its icon file if exists."""
+        sub = self.get_subscription(sub_id)
+        if sub and sub['ikon_path']:
+            icon_path = Path(sub['ikon_path'])
+            if icon_path.exists():
+                icon_path.unlink()
+
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute("DELETE FROM subscription WHERE id = ?", (sub_id,))
+        conn.commit()
+        conn.close()
+
+    def get_total_subscription_per_bulan(self):
+        """Get total nominal of all active subscriptions."""
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute("SELECT COALESCE(SUM(nominal), 0) as total FROM subscription WHERE aktif = 1")
+        row = c.fetchone()
+        conn.close()
+        return row['total'] if row else 0
 
     # ===== BACKUP / RESTORE =====
 

@@ -1,7 +1,7 @@
 import streamlit as st
 from database import Database
 from datetime import date
-from utils import format_rupiah, get_bulan_nama, BULAN_NAMA
+from utils import format_rupiah, get_bulan_nama, BULAN_NAMA, render_wallet_card
 import pandas as pd
 import altair as alt
 
@@ -156,14 +156,12 @@ st.subheader("👛 Saldo per Wallet")
 df_wallet_saldo = st.session_state.db.get_saldo_semua_wallet()
 
 if df_wallet_saldo:
-    wallet_cols = st.columns(min(3, len(df_wallet_saldo)))
+    n_cols = min(3, len(df_wallet_saldo))
+    wallet_cols = st.columns(n_cols)
 
     for idx, wallet_row in enumerate(df_wallet_saldo):
-        with wallet_cols[idx % min(3, len(df_wallet_saldo))]:
-            st.metric(
-                f"{wallet_row['ikon_bawaan']} {wallet_row['nama']}",
-                format_rupiah(wallet_row['saldo_saat_ini'], mata_uang)
-            )
+        with wallet_cols[idx % n_cols]:
+            render_wallet_card(wallet_row, mata_uang)
 else:
     st.info("Tidak ada wallet")
 
@@ -177,37 +175,24 @@ col_summary1, col_summary2 = st.columns(2)
 with col_summary1:
     st.markdown("**Ringkasan Bulan Ini**")
 
-    pemasukan_bulan = summary["total_pemasukan"]
-    pengeluaran_bulan = summary["total_pengeluaran"]
-    saldo_bulan = summary["saldo_bulan"]
-
     col_p, col_e, col_s = st.columns(3)
     with col_p:
-        st.metric("Pemasukan", format_rupiah(pemasukan_bulan, mata_uang), delta=None)
+        st.metric("Pemasukan", format_rupiah(summary["total_pemasukan"], mata_uang), delta=None)
     with col_e:
-        st.metric("Pengeluaran", format_rupiah(pengeluaran_bulan, mata_uang), delta=None)
+        st.metric("Pengeluaran", format_rupiah(summary["total_pengeluaran"], mata_uang), delta=None)
     with col_s:
-        st.metric("Saldo", format_rupiah(saldo_bulan, mata_uang), delta=None)
+        st.metric("Saldo", format_rupiah(summary["saldo_bulan"], mata_uang), delta=None)
 
 # Total summary
 with col_summary2:
     st.markdown("**Ringkasan Keseluruhan**")
 
     # Calculate total pemasukan and pengeluaran
-    df_all = st.session_state.db.get_transaksi()
-    if not df_all.empty:
-        total_pemasukan_all = df_all[df_all['jenis'] == 'pemasukan']['nominal'].sum()
-        total_pengeluaran_all = df_all[df_all['jenis'] == 'pengeluaran']['nominal'].sum()
-    else:
-        total_pemasukan_all = 0
-        total_pengeluaran_all = 0
-
-    saldo_all = total_pemasukan_all - total_pengeluaran_all
-
+    ringkasan_all = st.session_state.db.get_ringkasan_keseluruhan()
     col_p2, col_e2, col_s2 = st.columns(3)
     with col_p2:
-        st.metric("Pemasukan Total", format_rupiah(total_pemasukan_all, mata_uang), delta=None)
+        st.metric("Pemasukan Total", format_rupiah(ringkasan_all["total_pemasukan"], mata_uang), delta=None)
     with col_e2:
-        st.metric("Pengeluaran Total", format_rupiah(total_pengeluaran_all, mata_uang), delta=None)
+        st.metric("Pengeluaran Total", format_rupiah(ringkasan_all["total_pengeluaran"], mata_uang), delta=None)
     with col_s2:
-        st.metric("Saldo Total", format_rupiah(saldo_all, mata_uang), delta=None)
+        st.metric("Saldo Total", format_rupiah(ringkasan_all["saldo"], mata_uang), delta=None)
