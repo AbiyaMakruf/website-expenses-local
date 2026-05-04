@@ -97,6 +97,8 @@ with col_right:
         if wallet:
             st.subheader("✏️ Edit Wallet")
 
+            ikon_idx = IKON_OPTIONS.index(wallet['ikon_bawaan']) if wallet['ikon_bawaan'] in IKON_OPTIONS else 0
+
             with st.form(f"form_edit_wallet_{edit_id}"):
                 nama = st.text_input("Nama Wallet", value=wallet['nama'])
                 jenis = st.selectbox(
@@ -104,7 +106,7 @@ with col_right:
                     ["bank", "e-wallet", "cash", "investasi"],
                     index=["bank", "e-wallet", "cash", "investasi"].index(wallet['jenis'])
                 )
-                ikon_bawaan = st.selectbox("Ikon Emoji", IKON_OPTIONS, index=IKON_OPTIONS.index(wallet['ikon_bawaan']))
+                ikon_bawaan = st.selectbox("Ikon Emoji", IKON_OPTIONS, index=ikon_idx)
                 saldo_awal = st.number_input("Saldo Awal", value=wallet['saldo_awal'], min_value=0.0, step=1000.0, format="%.0f")
                 warna = st.color_picker("Warna", value=wallet['warna'])
 
@@ -117,13 +119,7 @@ with col_right:
 
                 ikon_file = st.file_uploader("Upload icon baru (jpg, png, webp)", type=["jpg", "jpeg", "png", "webp"])
 
-                col_save, col_cancel = st.columns(2)
-                with col_save:
-                    submit = st.form_submit_button("💾 Simpan", use_container_width=True)
-                with col_cancel:
-                    if st.form_submit_button("❌ Batal", use_container_width=True):
-                        del st.session_state.edit_wallet_id
-                        st.rerun()
+                submit = st.form_submit_button("💾 Simpan", use_container_width=True)
 
                 if submit:
                     if not nama.strip():
@@ -152,6 +148,10 @@ with col_right:
                             st.rerun()
                         except ValueError as e:
                             st.error(f"Error: {e}")
+
+            if st.button("❌ Batal", use_container_width=True):
+                del st.session_state.edit_wallet_id
+                st.rerun()
 
     # Add mode
     else:

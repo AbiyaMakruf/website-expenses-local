@@ -115,15 +115,7 @@ with col_right:
                     format_func=lambda pid: "— (Kategori Utama)" if pid is None else f"{parent_map[pid]['ikon']} {parent_map[pid]['nama']}"
                 )
 
-                col_save, col_cancel = st.columns(2)
-                with col_save:
-                    submit = st.form_submit_button("💾 Simpan", use_container_width=True)
-                with col_cancel:
-                    cancel = st.form_submit_button("❌ Batal", use_container_width=True)
-
-                if cancel:
-                    del st.session_state.edit_kategori_id
-                    st.rerun()
+                submit = st.form_submit_button("💾 Simpan", use_container_width=True)
 
                 if submit:
                     try:
@@ -133,6 +125,10 @@ with col_right:
                         st.rerun()
                     except ValueError as e:
                         st.error(f"Error: {e}")
+
+            if st.button("❌ Batal", use_container_width=True, key="batal_edit_kat"):
+                del st.session_state.edit_kategori_id
+                st.rerun()
 
     # Add sub-category mode
     elif "add_sub_parent_id" in st.session_state:
@@ -148,15 +144,7 @@ with col_right:
                 ikon = st.selectbox("Ikon", IKON_OPTIONS, index=0)
                 warna = st.color_picker("Warna", value=parent_kat['warna'])
 
-                col_save, col_cancel = st.columns(2)
-                with col_save:
-                    submit = st.form_submit_button("➕ Tambah", use_container_width=True)
-                with col_cancel:
-                    cancel = st.form_submit_button("❌ Batal", use_container_width=True)
-
-                if cancel:
-                    del st.session_state.add_sub_parent_id
-                    st.rerun()
+                submit = st.form_submit_button("➕ Tambah", use_container_width=True)
 
                 if submit:
                     if not nama.strip():
@@ -169,6 +157,10 @@ with col_right:
                             st.rerun()
                         except ValueError as e:
                             st.error(f"Error: {e}")
+
+            if st.button("❌ Batal", use_container_width=True, key="batal_sub_kat"):
+                del st.session_state.add_sub_parent_id
+                st.rerun()
 
     # Add new parent category
     else:
