@@ -40,7 +40,8 @@ with st.sidebar:
 
 # Get summary data
 summary = st.session_state.db.get_summary_bulan_ini()
-saldo_total = st.session_state.db.get_saldo_total()
+df_wallet_saldo_top = st.session_state.db.get_saldo_semua_wallet()
+total_semua_wallet = sum(w['saldo_saat_ini'] for w in df_wallet_saldo_top)
 
 # Top metrics
 col1, col2, col3, col4 = st.columns(4)
@@ -55,7 +56,7 @@ with col3:
     st.metric("Saldo Bulan Ini", format_rupiah(summary["saldo_bulan"], mata_uang))
 
 with col4:
-    st.metric("Saldo Total", format_rupiah(saldo_total, mata_uang))
+    st.metric("💰 Total Semua Wallet", format_rupiah(total_semua_wallet, mata_uang))
 
 st.markdown("---")
 
@@ -153,7 +154,7 @@ st.markdown("---")
 # Saldo per Wallet
 st.subheader("👛 Saldo per Wallet")
 
-df_wallet_saldo = st.session_state.db.get_saldo_semua_wallet()
+df_wallet_saldo = df_wallet_saldo_top
 
 if df_wallet_saldo:
     n_cols = min(3, len(df_wallet_saldo))
