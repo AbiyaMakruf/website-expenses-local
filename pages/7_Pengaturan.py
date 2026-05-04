@@ -253,13 +253,9 @@ with st.expander("🚨 Zona Berbahaya", expanded=False):
         if confirm_text == "HAPUS SEMUA":
             if st.button("🗑️ HAPUS SEMUA DATA", use_container_width=True, type="secondary"):
                 try:
-                    # Get db path and reinitialize
-                    db_path = st.session_state.db.db_path
-
-                    # Drop and recreate
-                    st.session_state.db.init_db()
-
-                    st.success("✅ Semua data berhasil dihapus dan database telah direset!")
+                    st.session_state.db.reset_db()
+                    st.session_state.app_settings = st.session_state.db.get_all_settings()
+                    st.success("✅ Semua data berhasil dihapus. Database direset ke kondisi awal.")
                     st.rerun()
 
                 except Exception as e:

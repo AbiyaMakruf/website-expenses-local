@@ -580,10 +580,15 @@ class Database:
         c = conn.cursor()
 
         c.execute("""
-            SELECT t.id, t.tanggal, t.jenis, t.kategori_id, k.nama as kategori_nama,
+            SELECT t.id, t.tanggal, t.jenis, t.kategori_id,
+                   CASE WHEN k.parent_id IS NOT NULL
+                        THEN p.nama || ' > ' || k.nama
+                        ELSE k.nama
+                   END as kategori_nama,
                    t.nominal, t.catatan, t.foto_path, t.wallet_id, t.created_at
             FROM transactions t
             JOIN kategori k ON t.kategori_id = k.id
+            LEFT JOIN kategori p ON k.parent_id = p.id
             WHERE t.tanggal BETWEEN ? AND ?
             ORDER BY t.tanggal DESC
         """, (tgl_dari, tgl_sampai))
@@ -758,14 +763,20 @@ class Database:
         conn = self._connect()
         c = conn.cursor()
         c.execute("""
-            SELECT k.id as kategori_id, k.nama as kategori_nama, k.ikon, k.warna,
+            SELECT k.id as kategori_id,
+                   CASE WHEN k.parent_id IS NOT NULL
+                        THEN p.nama || ' > ' || k.nama
+                        ELSE k.nama
+                   END as kategori_nama,
+                   k.ikon, k.warna,
                    COALESCE(SUM(CASE WHEN t.jenis='pengeluaran' THEN t.nominal ELSE 0 END), 0) as total_pengeluaran,
                    COALESCE(SUM(CASE WHEN t.jenis='pemasukan' THEN t.nominal ELSE 0 END), 0) as total_pemasukan
             FROM kategori k
+            LEFT JOIN kategori p ON k.parent_id = p.id
             LEFT JOIN transactions t ON t.kategori_id = k.id
                 AND strftime('%m', t.tanggal) = ?
                 AND strftime('%Y', t.tanggal) = ?
-            GROUP BY k.id, k.nama, k.ikon, k.warna
+            GROUP BY k.id, kategori_nama, k.ikon, k.warna
             HAVING total_pengeluaran > 0 OR total_pemasukan > 0
             ORDER BY total_pengeluaran DESC
         """, (f"{bulan:02d}", str(tahun)))
@@ -951,3 +962,28 @@ class Database:
 
     def restore_db(self, src_path):
         shutil.copy(str(src_path), str(self.db_path))
+
+    def reset_db(self):
+        """Delete all user data and re-seed defaults. Tables are preserved."""
+        conn = self._connect()
+        c = conn.cursor()
+
+        # Disable FK temporarily to allow ordered deletes
+        c.execute("PRAGMA foreign_keys = OFF")
+
+        c.execute("DELETE FROM transactions")
+        c.execute("DELETE FROM anggaran")
+        c.execute("DELETE FROM subscription")
+        c.execute("DELETE FROM wallet")
+        c.execute("DELETE FROM kategori")
+
+        # Reset autoincrement counters
+        for table in ("transactions", "anggaran", "subscription", "wallet", "kategori"):
+            c.execute(f"DELETE FROM sqlite_sequence WHERE name='{table}'")
+
+        c.execute("PRAGMA foreign_keys = ON")
+        conn.commit()
+        conn.close()
+
+        # Re-seed defaults via init_db (seeds only run when tables are empty)
+        self.init_db()
