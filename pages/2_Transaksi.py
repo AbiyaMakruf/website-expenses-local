@@ -17,29 +17,50 @@ st.title("➕ Tambah Transaksi")
 
 mata_uang = st.session_state.app_settings.get("mata_uang", "Rp")
 
-# Form to add transaction
+# Jenis + kategori selector OUTSIDE form (dependent selectboxes need re-render)
+col_sel1, col_sel2, col_sel3 = st.columns(3)
+
+with col_sel1:
+    jenis = st.radio("Jenis", ["pengeluaran", "pemasukan"], index=0, horizontal=True)
+
+# Two-step kategori: parent → optional child
+parents = st.session_state.db.get_all_kategori(jenis=jenis, parent_id="root")
+
+with col_sel2:
+    if parents:
+        parent_map = {p['id']: p for p in parents}
+        parent_sel = st.selectbox(
+            "Kategori",
+            options=[p['id'] for p in parents],
+            format_func=lambda pid: f"{parent_map[pid]['ikon']} {parent_map[pid]['nama']}"
+        )
+    else:
+        parent_sel = None
+        st.warning(f"Tidak ada kategori untuk '{jenis}'")
+
+with col_sel3:
+    children = st.session_state.db.get_all_kategori(parent_id=parent_sel) if parent_sel else []
+    if children:
+        child_map = {c['id']: c for c in children}
+        child_sel = st.selectbox(
+            "Sub-kategori",
+            options=[c['id'] for c in children],
+            format_func=lambda cid: f"{child_map[cid]['ikon']} {child_map[cid]['nama']}"
+        )
+        kategori_id = child_sel
+    else:
+        st.markdown("&nbsp;")
+        kategori_id = parent_sel
+
+st.markdown("---")
+
 with st.form("form_transaksi"):
     col1, col2 = st.columns(2)
 
     with col1:
-        jenis = st.radio("Jenis", ["pengeluaran", "pemasukan"], index=0, horizontal=True)
         tanggal = st.date_input("Tanggal", value=date.today())
 
     with col2:
-        kategori_list = st.session_state.db.get_all_kategori(jenis=jenis)
-        if kategori_list:
-            kat_map = {k['id']: k for k in kategori_list}
-            kategori_id = st.selectbox(
-                "Kategori",
-                options=[k['id'] for k in kategori_list],
-                format_func=lambda kid: f"{kat_map[kid]['ikon']} {kat_map[kid]['nama']}"
-            )
-        else:
-            st.error(f"Tidak ada kategori untuk jenis '{jenis}'")
-            kategori_id = None
-
-    col_wallet = st.columns(1)[0]
-    with col_wallet:
         wallets = st.session_state.db.get_all_wallets()
         if wallets:
             wallet_map = {w['id']: w for w in wallets}
@@ -51,16 +72,8 @@ with st.form("form_transaksi"):
         else:
             wallet_id = None
 
-    nominal = st.number_input(
-        "Nominal",
-        min_value=0.0,
-        value=0.0,
-        step=1000.0,
-        format="%.0f"
-    )
-
+    nominal = st.number_input("Nominal", min_value=0.0, value=0.0, step=1000.0, format="%.0f")
     catatan = st.text_area("Catatan (opsional)", max_chars=500, height=100)
-
     foto = st.file_uploader("📷 Foto Struk/Bukti (opsional)", type=["jpg", "jpeg", "png", "webp"])
 
     submit = st.form_submit_button("💾 Simpan Transaksi", use_container_width=True)
@@ -80,7 +93,6 @@ with st.form("form_transaksi"):
                 wallet_id=wallet_id
             )
 
-            # Simpan gambar jika ada
             if foto:
                 uploads_dir = st.session_state.db.get_uploads_dir()
                 ext = foto.name.rsplit(".", 1)[-1].lower()
@@ -94,8 +106,6 @@ with st.form("form_transaksi"):
             st.rerun()
 
 st.markdown("---")
-
-# Preview: Last 5 transactions
 st.subheader("📋 Transaksi Terakhir")
 
 df = st.session_state.db.get_transaksi(limit=5)
@@ -103,7 +113,6 @@ df = st.session_state.db.get_transaksi(limit=5)
 if df.empty:
     st.info("Belum ada transaksi")
 else:
-    # Format display
     display_df = df.copy()
     display_df['tanggal'] = display_df['tanggal'].astype(str)
     display_df['kategori'] = display_df.apply(lambda row: f"{row['ikon']} {row['kategori_nama']}", axis=1)

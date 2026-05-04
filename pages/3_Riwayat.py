@@ -40,7 +40,11 @@ with col4:
     kategori_selected = st.multiselect(
         "Kategori",
         options=[k['id'] for k in kategori_list],
-        format_func=lambda kid: f"{kategori_map[kid]['ikon']} {kategori_map[kid]['nama']}"
+        format_func=lambda kid: (
+            f"  └ {kategori_map[kid]['ikon']} {kategori_map[kid]['nama']}"
+            if kategori_map[kid].get('parent_id')
+            else f"{kategori_map[kid]['ikon']} {kategori_map[kid]['nama']}"
+        )
     )
 
 search_text = st.text_input("Cari catatan atau kategori", "")
