@@ -38,12 +38,14 @@ steps:
           --allow-unauthenticated \
           --min-instances=0 \
           --max-instances=1 \
-          --memory=512Mi \
+          --memory=1Gi \
           --cpu=1 \
           --timeout=300 \
           --concurrency=1 \
           --set-env-vars=GCS_BUCKET=new-tracker-expenses \
-          --execution-environment=gen2
+          --execution-environment=gen2 \
+          --startup-cpu-boost \
+          --no-cpu-throttling
 
 images:
   - asia-southeast1-docker.pkg.dev/tracker-expenses-478512/expenses-repo/expenses-app

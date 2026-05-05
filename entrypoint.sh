@@ -15,4 +15,20 @@ gcsfuse \
 
 echo "GCS bucket mounted successfully"
 
-exec streamlit run app.py
+# Start Streamlit di background dulu
+streamlit run app.py &
+STREAMLIT_PID=$!
+
+# Tunggu sampai Streamlit benar-benar siap menerima request
+echo "Waiting for Streamlit to be ready..."
+for i in $(seq 1 30); do
+  if curl -sf http://localhost:8080/_stcore/health > /dev/null 2>&1; then
+    echo "Streamlit is ready (attempt $i)"
+    break
+  fi
+  echo "Attempt $i: not ready yet, waiting..."
+  sleep 2
+done
+
+# Serahkan proses ke Streamlit (Cloud Run monitor PID ini)
+wait $STREAMLIT_PID
