@@ -1,0 +1,43 @@
+steps:
+  # Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'asia-southeast1-docker.pkg.dev/tracker-expenses-478512/expenses-repo/expenses-app:$COMMIT_SHA'
+      - '-t'
+      - 'asia-southeast1-docker.pkg.dev/tracker-expenses-478512/expenses-repo/expenses-app:latest'
+      - '.'
+
+  # Push image ke Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'asia-southeast1-docker.pkg.dev/tracker-expenses-478512/expenses-repo/expenses-app'
+
+  # Deploy ke Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'new-tracker-expenses-web'
+      - '--image=asia-southeast1-docker.pkg.dev/tracker-expenses-478512/expenses-repo/expenses-app:$COMMIT_SHA'
+      - '--region=asia-southeast1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--min-instances=0'
+      - '--max-instances=1'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--timeout=300'
+      - '--concurrency=1'
+      - '--set-env-vars=GCS_BUCKET=new-tracker-expenses'
+      - '--execution-environment=gen2'
+
+images:
+  - 'asia-southeast1-docker.pkg.dev/tracker-expenses-478512/expenses-repo/expenses-app'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
