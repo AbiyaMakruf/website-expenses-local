@@ -1,14 +1,17 @@
 FROM python:3.11-slim
 
-# Install gcsfuse dependencies
+# Install gcsfuse (cara modern, tanpa apt-key yang deprecated)
 RUN apt-get update && apt-get install -y \
     curl \
     gnupg \
     lsb-release \
     fuse \
-    && echo "deb https://packages.cloud.google.com/apt gcsfuse-$(lsb_release -c -s) main" \
+    ca-certificates \
+    && mkdir -p /usr/share/keyrings \
+    && curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+       | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt gcsfuse-$(lsb_release -cs) main" \
        > /etc/apt/sources.list.d/gcsfuse.list \
-    && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
     && apt-get update && apt-get install -y gcsfuse \
     && rm -rf /var/lib/apt/lists/*
 
@@ -19,7 +22,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Mount point untuk GCS bucket
 RUN mkdir -p /app/data
 
 COPY entrypoint.sh /entrypoint.sh
