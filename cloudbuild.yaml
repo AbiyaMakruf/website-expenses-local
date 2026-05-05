@@ -41,7 +41,7 @@ steps:
           --memory=1Gi \
           --cpu=1 \
           --timeout=300 \
-          --concurrency=1 \
+          --concurrency=80 \
           --set-env-vars=GCS_BUCKET=new-tracker-expenses \
           --execution-environment=gen2 \
           --startup-cpu-boost \
